@@ -1,0 +1,14 @@
+{
+  "name": "burnt-testnet-automation",
+  "version": "2.0.0",
+  "description": "Burnt Testnet Automation",
+  "main": "/app/app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/chrome": "^0.0.277"
+  }
+}

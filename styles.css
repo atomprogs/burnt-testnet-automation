@@ -1,0 +1,23 @@
+/* Example: Makeover styles */
+body {
+  background-color: #f0f0f0; /* Light background */
+  color: #333; /* Dark text */
+  font-family: "Arial", sans-serif;
+}
+
+header {
+  background-color: #0044cc; /* Darker header */
+  color: white;
+}
+
+.chat-box {
+  background-color: #ffffff; /* White chat background */
+  border: 2px solid #0044cc; /* Blue border */
+}
+
+.chat-input {
+  background-color: #f7f7f7; /* Light input background */
+  border: 1px solid #ccc; /* Light border */
+}
+
+/* Add more custom styles as needed */

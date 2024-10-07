@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Burnt Dashboard Automator",
+  "version": "1.0",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["https://testnet.dashboard.burnt.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://testnet.dashboard.burnt.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}
