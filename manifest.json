@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Burnt Dashboard Automator",
-  "version": "1.0",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "version": "2.0",
+  "permissions": ["activeTab", "scripting", "storage", "tabs", "alarms"],
   "host_permissions": ["https://testnet.dashboard.burnt.com/*"],
   "background": {
     "service_worker": "background.js"
@@ -12,5 +12,8 @@
       "matches": ["https://testnet.dashboard.burnt.com/*"],
       "js": ["content.js"]
     }
-  ]
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
 }

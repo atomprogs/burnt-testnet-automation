@@ -1,24 +1,45 @@
-const RECIPIENT_ADDRESS = 'xion16evalya9vxgqjahqzrycenjd6dwssyq8uxc0nzpd2nz67l77avesxcddf9';
-const TOTAL_ITERATIONS = 25;
-const RETRY_DELAY = 15000; // 15 seconds
-const PAGE_LOAD_DELAY = 10000; // 5 seconds
+const DEFAULT_CONFIG = {
+    recipientAddress: 'xion16evalya9vxgqjahqzrycenjd6dwssyq8uxc0nzpd2nz67l77avesxcddf9',
+    minIterations: 25,
+    maxIterations: 35,
+    retryDelay: 15000,
+    pageLoadDelay: 10000,
+    minAmount: 0.001,
+    maxAmount: 0.002
+};
 
+let config = DEFAULT_CONFIG;
 let dailyStats = {
     date: new Date().toDateString(),
     successfulIterations: 0,
-    totalAttempts: 0
+    totalAttempts: 0,
+    errors: [],
+    targetIterations: 0
 };
+
+async function loadConfig() {
+    return new Promise((resolve) => {
+        chrome.storage.local.get(['config'], (result) => {
+            config = { ...DEFAULT_CONFIG, ...result.config };
+            console.log('Loaded config:', config);
+            resolve();
+        });
+    });
+}
 
 async function loadDailyStats() {
     return new Promise((resolve) => {
         chrome.storage.local.get(['dailyStats'], (result) => {
-            if (result.dailyStats && result.dailyStats.date === new Date().toDateString()) {
+            const today = new Date().toDateString();
+            if (result.dailyStats && result.dailyStats.date === today) {
                 dailyStats = result.dailyStats;
             } else {
                 dailyStats = {
-                    date: new Date().toDateString(),
+                    date: today,
                     successfulIterations: 0,
-                    totalAttempts: 0
+                    totalAttempts: 0,
+                    errors: [],
+                    targetIterations: getRandomIterations(config.minIterations, config.maxIterations)
                 };
             }
             console.log('Loaded daily stats:', dailyStats);
@@ -33,35 +54,45 @@ async function saveDailyStats() {
     });
 }
 
+function getRandomIterations(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function getRandomAmount(min, max) {
+    return (Math.random() * (max - min) + min).toFixed(3);
+}
+
+function logError(error) {
+    console.error('Error:', error);
+    dailyStats.errors.push({ timestamp: new Date().toISOString(), message: error.toString() });
+    saveDailyStats();
+}
+
 async function startAutomation() {
+    await loadConfig();
     await loadDailyStats();
 
-    if (dailyStats.successfulIterations >= TOTAL_ITERATIONS) {
-        console.log('Daily limit reached. Automation will resume tomorrow.');
+    if (dailyStats.successfulIterations >= dailyStats.targetIterations) {
+        console.log('Daily target reached. Automation will resume tomorrow.');
         return;
     }
 
-    console.log(`Starting iteration ${dailyStats.successfulIterations + 1} of ${TOTAL_ITERATIONS}`);
+    console.log(`Starting iteration ${dailyStats.successfulIterations + 1} of ${dailyStats.targetIterations}`);
     dailyStats.totalAttempts++;
 
     try {
         await runSingleIteration();
-
         dailyStats.successfulIterations++;
         await saveDailyStats();
 
-        console.log(`Completed iteration ${dailyStats.successfulIterations} of ${TOTAL_ITERATIONS}`);
-
-        if (dailyStats.successfulIterations < TOTAL_ITERATIONS) {
-            setTimeout(startAutomation, 8000);
+        if (dailyStats.successfulIterations < dailyStats.targetIterations) {
+            setTimeout(startAutomation, config.retryDelay);
         } else {
             console.log('Daily automation completed successfully!');
         }
     } catch (error) {
-        console.error('Error in automation:', error);
+        logError(error);
         await saveDailyStats();
-
-        // Refresh the page and retry
         chrome.runtime.sendMessage({ action: "refreshPage" });
     }
 }
@@ -76,34 +107,20 @@ async function runSingleIteration() {
     await waitAndClickButton('GOTCHA');
 }
 
-function waitForElement(selector, minCount = 1) {
+function waitForElement(selector, minCount = 1, timeout = 20000) {
     return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            observer.disconnect();
-            reject(`Timeout waiting for ${selector}`);
-        }, 20000);
-
-        const observer = new MutationObserver((mutations, obs) => {
+        const startTime = Date.now();
+        const checkElement = () => {
             const elements = document.querySelectorAll(selector);
             if (elements.length >= minCount) {
-                clearTimeout(timeout);
-                obs.disconnect();
                 resolve(elements);
+            } else if (Date.now() - startTime > timeout) {
+                reject(`Timeout waiting for ${selector}`);
+            } else {
+                setTimeout(checkElement, 100);
             }
-        });
-
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true,
-            attributes: true,
-        });
-
-        const elements = document.querySelectorAll(selector);
-        if (elements.length >= minCount) {
-            clearTimeout(timeout);
-            observer.disconnect();
-            resolve(elements);
-        }
+        };
+        checkElement();
     });
 }
 
@@ -118,14 +135,15 @@ async function fillDialog() {
 
     const numberInput = await findInputInDialog(dialog, 'input[type="number"]');
     if (numberInput) {
-        numberInput.value = '0.01';
+        const amount = getRandomAmount(config.minAmount, config.maxAmount);
+        numberInput.value = amount.toString();
         numberInput.dispatchEvent(new Event('input', { bubbles: true }));
         numberInput.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     const recipientInput = await findInputInDialog(dialog, '[data-testid="recipient-input"]');
     if (recipientInput) {
-        recipientInput.value = RECIPIENT_ADDRESS;
+        recipientInput.value = config.recipientAddress;
         recipientInput.dispatchEvent(new Event('input', { bubbles: true }));
         recipientInput.dispatchEvent(new Event('change', { bubbles: true }));
     }
@@ -151,46 +169,32 @@ async function waitAndClickButton(text) {
     console.log(`Clicked ${text} button`);
 }
 
-function waitForButtonWithText(text) {
+function waitForButtonWithText(text, timeout = 20000) {
     return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            observer.disconnect();
-            reject(`Timeout waiting for ${text} button`);
-        }, 20000);
-
-        const observer = new MutationObserver((mutations, obs) => {
+        const startTime = Date.now();
+        const checkButton = () => {
             const button = Array.from(document.querySelectorAll('button')).find(
                 btn => btn.textContent.trim() === text
             );
             if (button) {
-                clearTimeout(timeout);
-                obs.disconnect();
                 resolve(button);
+            } else if (Date.now() - startTime > timeout) {
+                reject(`Timeout waiting for ${text} button`);
+            } else {
+                setTimeout(checkButton, 100);
             }
-        });
-
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true,
-        });
-
-        const button = Array.from(document.querySelectorAll('button')).find(
-            btn => btn.textContent.trim() === text
-        );
-        if (button) {
-            clearTimeout(timeout);
-            observer.disconnect();
-            resolve(button);
-        }
+        };
+        checkButton();
     });
 }
 
-// Start automation when page loads
-window.addEventListener('load', () => {
-    setTimeout(startAutomation, PAGE_LOAD_DELAY);
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "startAutomation") {
+        startAutomation();
+    }
 });
 
 // Also handle if the page is refreshed due to an error
 if (document.readyState === 'complete') {
-    setTimeout(startAutomation, PAGE_LOAD_DELAY);
+    setTimeout(startAutomation, config.pageLoadDelay);
 }

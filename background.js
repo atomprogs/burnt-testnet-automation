@@ -1,22 +1,40 @@
+chrome.runtime.onInstalled.addListener(() => {
+    chrome.alarms.create("checkAutomation", { periodInMinutes: 60 });
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === "checkAutomation") {
+        checkAndStartAutomation();
+    }
+});
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "refreshPage") {
         chrome.tabs.reload(sender.tab.id);
     }
 });
 
-console.log("Browser started, checking daily automation status...");
+function checkAndStartAutomation() {
+    chrome.storage.local.get(['dailyStats', 'config'], (result) => {
+        const today = new Date().toDateString();
+        const stats = result.dailyStats || {};
+        const config = result.config || {};
 
-chrome.storage.local.get(['dailyStats'], (result) => {
-    const today = new Date().toDateString();
-    const stats = result.dailyStats;
+        if (!stats.date || stats.date !== today || stats.successfulIterations < stats.targetIterations) {
+            chrome.tabs.query({ url: "https://testnet.dashboard.burnt.com/*" }, (tabs) => {
+                if (tabs.length > 0) {
+                    console.log("Dashboard tab already open. Starting automation.");
+                    chrome.tabs.sendMessage(tabs[0].id, { action: "startAutomation" });
+                } else {
+                    console.log("Opening Burnt Dashboard for automation.");
+                    chrome.tabs.create({ url: "https://testnet.dashboard.burnt.com" });
+                }
+            });
+        } else {
+            console.log('Daily target reached. No automation will be performed.');
+        }
+    });
+}
 
-    // Check if the iterations have already reached the daily limit
-    if (stats && stats.date === today && stats.successfulIterations >= 25) {
-        console.log('Daily limit reached. No automation will be performed.');
-    } else {
-        // Open a new tab with the target URL if the limit has not been reached
-        chrome.tabs.create({ url: "https://testnet.dashboard.burnt.com" }, (tab) => {
-            console.log("Opened Burnt Dashboard for automation.");
-        });
-    }
-});
+// Initial check when the background script loads
+checkAndStartAutomation();
